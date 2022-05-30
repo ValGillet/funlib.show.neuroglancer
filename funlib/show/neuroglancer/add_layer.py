@@ -1,6 +1,6 @@
 from .scale_pyramid import ScalePyramid
 import neuroglancer
-
+import numpy as np
 
 def add_layer(
     context,
@@ -203,7 +203,7 @@ void main() {
 
     else:
         layer = neuroglancer.LocalVolume(
-            data=array.data,
+            data=array.to_ndarray(),
             voxel_offset=voxel_offset,
             dimensions=dimensions,
         )

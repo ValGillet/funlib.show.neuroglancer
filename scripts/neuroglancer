@@ -4,6 +4,7 @@ from funlib.show.neuroglancer import add_layer
 import argparse
 import daisy
 import glob
+import json
 import neuroglancer
 import os
 import webbrowser
@@ -24,6 +25,12 @@ parser.add_argument(
     nargs='+',
     action='append',
     help="The datasets in the container to show")
+parser.add_argument(
+    '--synapses',
+    '-s',
+    type=str,
+    action='append',
+    help="Synapses to show as lines")
 parser.add_argument(
     '--graphs',
     '-g',
@@ -178,6 +185,40 @@ for f, datasets in zip(args.file, args.datasets):
         for array, dataset in arrays:
             add_layer(s, array, dataset)
 
+# Add synapses
+if args.synapses:
+    for syn_file, f, dataset in zip(args.synapses, args.file, args.datasets):
+        spatial_dim_names = ["t", "z", "y", "x"]
+        channel_dim_names = ["b^", "c^"]
+        
+        ds = daisy.open_ds(f, dataset[0])
+        
+        dims = len(ds.data.shape)
+        spatial_dims = ds.roi.dims()
+        channel_dims = dims - spatial_dims
+        
+        attrs = {
+             "names": (channel_dim_names[-channel_dims:] if channel_dims > 0 else [])
+             + spatial_dim_names[-spatial_dims:]
+             if spatial_dims > 0
+             else [],
+             "units": [""] * channel_dims + ["nm"] * spatial_dims,
+             "scales": [1] * channel_dims + list(ds.voxel_size),
+         }
+        
+        dimensions = neuroglancer.CoordinateSpace(**attrs)
+
+        if os.path.isfile(syn_file):
+            with open(syn_file, 'r') as synapses:
+                syn_dict = json.load(synapses)
+            with viewer.txn() as s:
+                s.layers.append(name = 'synapses', layer = neuroglancer.AnnotationLayer(syn_dict))
+        else:
+            with open(syn_file, 'w') as synapses:
+                pass
+            with viewer.txn() as s:
+                s.layers.append(name = 'synapses', layer = neuroglancer.LocalAnnotationLayer(dimensions))
+
 if args.graphs:
     for f, graphs in zip(args.file, args.graphs):
 
@@ -216,3 +257,12 @@ if os.environ.get("DISPLAY") and not args.no_browser:
 
 print("Press ENTER to quit")
 input()
+
+# Save synapses
+if args.synapses:
+    for syn_file in args.synapses:
+        with viewer.txn() as s:
+            json_syn = s.layers['synapses'].to_json()
+        with open(syn_file, 'w') as synapses:
+            json.dump(json_syn, synapses)
+    print(f'Synapses saved to file(s) {args.synapses}')
